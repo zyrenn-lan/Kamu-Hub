@@ -1,0 +1,828 @@
+--[[
+    KamuHub v1.0 - Universal Hub
+    Abrir/fechar: LeftShift (PC) ou botao "-" / pilula (celular)
+]]
+
+if getgenv and getgenv().KamuHubDestroy then pcall(getgenv().KamuHubDestroy) end
+
+------------------------------------------------------------------
+-- CONFIG DO DONO (edite aqui)
+------------------------------------------------------------------
+local CFG = {
+    -- UserIds que podem usar os recursos PREMIUM
+    Premium = {
+        -- [8367385685] = true,
+    },
+    LogoURL = "https://claude.ai/api/a304aa6f-7451-44e2-a4c6-2ca76ebcd86f/files/72a03f82-fbc6-4d16-b381-98d192b040ce/preview",
+}
+
+------------------------------------------------------------------
+-- SERVICOS
+------------------------------------------------------------------
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
+local TS = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
+local PPS = game:GetService("ProximityPromptService")
+local lp = Players.LocalPlayer
+
+------------------------------------------------------------------
+-- ESTADO / TEMA
+------------------------------------------------------------------
+local theme = {
+    Accent = Color3.fromRGB(150, 90, 255),
+    BG = Color3.fromRGB(16, 16, 22),
+    Side = Color3.fromRGB(22, 22, 30),
+    Card = Color3.fromRGB(32, 32, 44),
+    Off = Color3.fromRGB(60, 60, 78),
+    Text = Color3.fromRGB(240, 240, 250),
+    Sub = Color3.fromRGB(150, 150, 170),
+}
+
+local S = {
+    fly = false, flySpeed = 60,
+    noclip = false, infJump = false,
+    speedOn = false, speed = 32,
+    jumpOn = false, jump = 90,
+    spin = false, spinSpeed = 12,
+    esp = false, clickTp = false, fullbright = false,
+    antiafk = true, autoclick = false, cps = 10,
+    farm = false, weapon = "Melee", farmH = 8,
+    doorsHl = false,
+}
+
+local lang = "pt"
+local isPremium = CFG.Premium[lp.UserId] == true
+
+local L = {
+    pt = {
+        tab_main = "Main", tab_player = "Player", tab_tp = "Teleport", tab_visual = "Visual",
+        tab_game = "Jogo", tab_premium = "Premium", tab_config = "Config",
+        fly = "Fly (voar)", flyspeed = "Velocidade do Fly", noclip = "Noclip",
+        infjump = "Pulo infinito", speedon = "Ativar velocidade", speedval = "Velocidade",
+        jumpon = "Ativar pulo alto", jumpval = "Forca do pulo", spin = "Spin (girar)",
+        spinspeed = "Velocidade do spin", antiafk = "Anti-AFK", instprompt = "Interacao instantanea",
+        autoclick = "Auto Click", cps = "Cliques por segundo",
+        tpplayer = "Teleportar para jogador", refresh = "Atualizar lista",
+        rejoin = "Reentrar no servidor", serverhop = "Trocar de servidor",
+        esp = "ESP de jogadores", clicktp = "Click TP (Ctrl + clique)", fullbright = "Fullbright",
+        fps = "Boost de FPS", language = "Idioma", accent = "Cor do painel",
+        togglekey = "Tecla abrir/fechar", pressakey = "Aperte uma tecla...",
+        destroy = "Fechar KamuHub", locked = "Area exclusiva para usuarios premium.",
+        yourid = "Seu UserId: ", nopremium = "Voce nao tem acesso premium.",
+        game_detected = "Jogo detectado: ", game_none = "Jogo sem opcoes especiais (use as universais).",
+        farm = "Auto Farm (mob mais proximo)", weapon = "Arma: ", farmh = "Altura do farm",
+        doorshl = "Destacar itens/interacoes", mm2info = "Ative o ESP (Premium): assassino = vermelho, xerife = azul.",
+        loaded = "KamuHub carregado!", needprem = "Recurso premium!",
+    },
+    en = {
+        tab_main = "Main", tab_player = "Player", tab_tp = "Teleport", tab_visual = "Visual",
+        tab_game = "Game", tab_premium = "Premium", tab_config = "Config",
+        fly = "Fly", flyspeed = "Fly speed", noclip = "Noclip",
+        infjump = "Infinite jump", speedon = "Enable speed", speedval = "Speed",
+        jumpon = "Enable high jump", jumpval = "Jump power", spin = "Spin",
+        spinspeed = "Spin speed", antiafk = "Anti-AFK", instprompt = "Instant interact",
+        autoclick = "Auto Click", cps = "Clicks per second",
+        tpplayer = "Teleport to player", refresh = "Refresh list",
+        rejoin = "Rejoin server", serverhop = "Server hop",
+        esp = "Player ESP", clicktp = "Click TP (Ctrl + click)", fullbright = "Fullbright",
+        fps = "FPS boost", language = "Language", accent = "Panel color",
+        togglekey = "Toggle key", pressakey = "Press a key...",
+        destroy = "Close KamuHub", locked = "Premium users only.",
+        yourid = "Your UserId: ", nopremium = "You don't have premium access.",
+        game_detected = "Game detected: ", game_none = "No special options for this game (use the universal ones).",
+        farm = "Auto Farm (nearest mob)", weapon = "Weapon: ", farmh = "Farm height",
+        doorshl = "Highlight items/interactions", mm2info = "Turn on ESP (Premium): murderer = red, sheriff = blue.",
+        loaded = "KamuHub loaded!", needprem = "Premium feature!",
+    },
+}
+local function tr(k) return (L[lang] and L[lang][k]) or L.en[k] or k end
+
+local conns = {}
+local function bind(sig, fn) local c = sig:Connect(fn); conns[#conns + 1] = c; return c end
+
+local accentFns, langFns = {}, {}
+local function onAccent(fn) accentFns[#accentFns + 1] = fn; fn() end
+local function onLang(fn) langFns[#langFns + 1] = fn; fn() end
+
+------------------------------------------------------------------
+-- HELPERS DE PERSONAGEM
+------------------------------------------------------------------
+local function hum() local c = lp.Character return c and c:FindFirstChildOfClass("Humanoid") end
+local function root() local c = lp.Character return c and c:FindFirstChild("HumanoidRootPart") end
+
+------------------------------------------------------------------
+-- GUI BASE
+------------------------------------------------------------------
+local gui = Instance.new("ScreenGui")
+gui.Name = "KamuHub"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 999
+pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+local okParent = pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end)
+if not okParent or not gui.Parent then gui.Parent = lp:WaitForChild("PlayerGui") end
+
+local function new(class, props, parent)
+    local o = Instance.new(class)
+    for k, v in pairs(props or {}) do o[k] = v end
+    if parent then o.Parent = parent end
+    return o
+end
+local function corner(o, r) return new("UICorner", { CornerRadius = UDim.new(0, r) }, o) end
+
+local function notify(msg)
+    local f = new("TextLabel", {
+        Size = UDim2.fromOffset(250, 38), AnchorPoint = Vector2.new(1, 1),
+        Position = UDim2.new(1, -12, 1, -12), BackgroundColor3 = theme.Side,
+        Text = msg, TextColor3 = theme.Text, Font = Enum.Font.GothamMedium,
+        TextSize = 13, BorderSizePixel = 0,
+    }, gui)
+    corner(f, 8)
+    local st = new("UIStroke", { Thickness = 1.2 }, f)
+    onAccent(function() if st.Parent then st.Color = theme.Accent end end)
+    task.delay(2.5, function() f:Destroy() end)
+end
+
+local function loadLogo(img)
+    if CFG.LogoAsset ~= "" then img.Image = CFG.LogoAsset return end
+    if CFG.LogoURL ~= "" and writefile and getcustomasset then
+        task.spawn(function()
+            pcall(function()
+                writefile("kamuhub_logo.png", game:HttpGet(CFG.LogoURL))
+                img.Image = getcustomasset("kamuhub_logo.png")
+            end)
+        end)
+    end
+end
+
+------------------------------------------------------------------
+-- JANELA
+------------------------------------------------------------------
+local cam0 = workspace.CurrentCamera
+local win = new("Frame", {
+    Name = "Window", Size = UDim2.fromOffset(600, 380), AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = theme.BG,
+    BorderSizePixel = 0, ClipsDescendants = true,
+}, gui)
+corner(win, 14)
+local winStroke = new("UIStroke", { Thickness = 1.5, Transparency = 0.35 }, win)
+local uiscale = new("UIScale", { Scale = (cam0 and cam0.ViewportSize.X < 800) and 0.7 or 1 }, win)
+onAccent(function() winStroke.Color = theme.Accent end)
+
+-- header
+local header = new("Frame", { Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = theme.Side, BorderSizePixel = 0 }, win)
+local logo = new("ImageLabel", {
+    Size = UDim2.fromOffset(32, 32), Position = UDim2.fromOffset(10, 6),
+    BackgroundColor3 = theme.Accent, BorderSizePixel = 0, ScaleType = Enum.ScaleType.Crop,
+}, header)
+corner(logo, 16)
+loadLogo(logo)
+new("TextLabel", {
+    Size = UDim2.fromOffset(100, 44), Position = UDim2.fromOffset(50, 0), BackgroundTransparency = 1,
+    Text = "KamuHub", Font = Enum.Font.GothamBold, TextSize = 18, TextColor3 = theme.Text,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, header)
+local pageTitle = new("TextLabel", {
+    Size = UDim2.new(1, -330, 1, 0), Position = UDim2.fromOffset(160, 0), BackgroundTransparency = 1,
+    Text = "", Font = Enum.Font.GothamMedium, TextSize = 14, TextColor3 = theme.Sub,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, header)
+
+local function headerBtn(text, xOff)
+    local b = new("TextButton", {
+        Size = UDim2.fromOffset(30, 30), Position = UDim2.new(1, xOff, 0, 7),
+        BackgroundColor3 = theme.Card, Text = text, TextColor3 = theme.Text,
+        Font = Enum.Font.GothamBold, TextSize = 18, AutoButtonColor = true, BorderSizePixel = 0,
+    }, header)
+    corner(b, 8)
+    return b
+end
+local minBtn = headerBtn("-", -76)
+local closeBtn = headerBtn("x", -40)
+
+-- arrastar janela
+do
+    local dragging, startPos, startIn
+    header.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging, startPos, startIn = true, win.Position, i.Position
+        end
+    end)
+    bind(UIS.InputChanged, function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local d = (i.Position - startIn) / uiscale.Scale
+            win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end)
+    bind(UIS.InputEnded, function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+    end)
+end
+
+-- sidebar + conteudo
+local side = new("ScrollingFrame", {
+    Size = UDim2.new(0, 140, 1, -44), Position = UDim2.fromOffset(0, 44), BackgroundColor3 = theme.Side,
+    BorderSizePixel = 0, ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, win)
+new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, side)
+new("UIPadding", { PaddingTop = UDim.new(0, 10), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, side)
+local content = new("Frame", { Size = UDim2.new(1, -140, 1, -44), Position = UDim2.fromOffset(140, 44), BackgroundTransparency = 1 }, win)
+
+------------------------------------------------------------------
+-- COMPONENTES
+------------------------------------------------------------------
+local tabs, currentTab = {}, nil
+
+local function selectTab(t)
+    currentTab = t
+    for _, x in ipairs(tabs) do
+        local on = (x == t)
+        x.page.Visible = on
+        x.btn.BackgroundColor3 = on and theme.Accent or theme.Card
+        x.btn.BackgroundTransparency = on and 0.1 or 0.4
+    end
+    pageTitle.Text = tr(t.key)
+end
+onAccent(function() if currentTab then selectTab(currentTab) end end)
+onLang(function() if currentTab then pageTitle.Text = tr(currentTab.key) end end)
+
+local function addTab(key)
+    local btn = new("TextButton", {
+        Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = theme.Card, BackgroundTransparency = 0.4,
+        Text = "", BorderSizePixel = 0, AutoButtonColor = false,
+    }, side)
+    corner(btn, 8)
+    local lbl = new("TextLabel", {
+        Size = UDim2.new(1, -12, 1, 0), Position = UDim2.fromOffset(12, 0), BackgroundTransparency = 1,
+        Font = Enum.Font.GothamMedium, TextSize = 14, TextColor3 = theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, btn)
+    onLang(function() lbl.Text = tr(key) end)
+    local page = new("ScrollingFrame", {
+        Size = UDim2.new(1, -20, 1, -20), Position = UDim2.fromOffset(10, 10), BackgroundTransparency = 1,
+        BorderSizePixel = 0, ScrollBarThickness = 3, CanvasSize = UDim2.new(),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y, Visible = false,
+    }, content)
+    new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, page)
+    local t = { key = key, btn = btn, page = page }
+    tabs[#tabs + 1] = t
+    btn.MouseButton1Click:Connect(function() selectTab(t) end)
+    return page
+end
+
+local function row(page, h)
+    local r = new("Frame", { Size = UDim2.new(1, -6, 0, h or 38), BackgroundColor3 = theme.Card, BorderSizePixel = 0 }, page)
+    corner(r, 8)
+    return r
+end
+
+local function rowLabel(r, key, widthOff)
+    local l = new("TextLabel", {
+        Size = UDim2.new(1, widthOff or -70, 0, 38), Position = UDim2.fromOffset(12, 0), BackgroundTransparency = 1,
+        Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = theme.Text, TextXAlignment = Enum.TextXAlignment.Left,
+    }, r)
+    onLang(function() l.Text = tr(key) end)
+    return l
+end
+
+local function Toggle(page, key, default, cb)
+    local r = row(page)
+    rowLabel(r, key)
+    local sw = new("Frame", { Size = UDim2.fromOffset(40, 20), Position = UDim2.new(1, -52, 0.5, -10), BorderSizePixel = 0 }, r)
+    corner(sw, 10)
+    local knob = new("Frame", { Size = UDim2.fromOffset(16, 16), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0 }, sw)
+    corner(knob, 8)
+    local state = default
+    local function render()
+        sw.BackgroundColor3 = state and theme.Accent or theme.Off
+        TS:Create(knob, TweenInfo.new(0.15), { Position = state and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2) }):Play()
+    end
+    onAccent(render)
+    local btn = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "" }, r)
+    btn.MouseButton1Click:Connect(function()
+        local new_ = not state
+        local ok = cb(new_)
+        if ok == false then return end
+        state = new_
+        render()
+    end)
+    return r
+end
+
+local function Slider(page, key, min, max, def, cb)
+    local r = row(page, 52)
+    rowLabel(r, key, -80)
+    local val = new("TextLabel", {
+        Size = UDim2.fromOffset(60, 28), Position = UDim2.new(1, -68, 0, 0), BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = theme.Sub, Text = tostring(def),
+        TextXAlignment = Enum.TextXAlignment.Right,
+    }, r)
+    local bar = new("Frame", { Size = UDim2.new(1, -24, 0, 6), Position = UDim2.new(0, 12, 1, -14), BackgroundColor3 = theme.Off, BorderSizePixel = 0 }, r)
+    corner(bar, 3)
+    local fill = new("Frame", { Size = UDim2.fromScale((def - min) / (max - min), 1), BorderSizePixel = 0 }, bar)
+    corner(fill, 3)
+    onAccent(function() fill.BackgroundColor3 = theme.Accent end)
+    local dragging = false
+    local function upd(x)
+        local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+        local v = math.floor(min + (max - min) * rel + 0.5)
+        fill.Size = UDim2.fromScale(rel, 1)
+        val.Text = tostring(v)
+        cb(v)
+    end
+    bar.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; upd(i.Position.X)
+        end
+    end)
+    bind(UIS.InputChanged, function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then upd(i.Position.X) end
+    end)
+    bind(UIS.InputEnded, function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+    end)
+end
+
+local function Button(page, key, cb, dynamicText)
+    local r = row(page)
+    local b = new("TextButton", {
+        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 0.2, BorderSizePixel = 0,
+        Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = Color3.new(1, 1, 1), AutoButtonColor = true,
+    }, r)
+    corner(b, 8)
+    onAccent(function() b.BackgroundColor3 = theme.Accent end)
+    onLang(function() b.Text = dynamicText and dynamicText() or tr(key) end)
+    b.MouseButton1Click:Connect(function() cb(b) end)
+    return b
+end
+
+local function Choice(page, key, options, defIndex, cb)
+    local r = row(page)
+    rowLabel(r, key, -150)
+    local idx = defIndex
+    local b = new("TextButton", {
+        Size = UDim2.fromOffset(120, 26), Position = UDim2.new(1, -128, 0.5, -13), BorderSizePixel = 0,
+        Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = Color3.new(1, 1, 1), Text = options[idx],
+    }, r)
+    corner(b, 6)
+    onAccent(function() b.BackgroundColor3 = theme.Accent end)
+    b.MouseButton1Click:Connect(function()
+        idx = idx % #options + 1
+        b.Text = options[idx]
+        cb(idx, options[idx])
+    end)
+end
+
+local function Info(page, textFn)
+    local r = row(page, 44)
+    local l = new("TextLabel", {
+        Size = UDim2.new(1, -20, 1, 0), Position = UDim2.fromOffset(10, 0), BackgroundTransparency = 1,
+        Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = theme.Sub, TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, r)
+    onLang(function() l.Text = textFn() end)
+end
+
+------------------------------------------------------------------
+-- LOGICA: FLY / NOCLIP / ETC
+------------------------------------------------------------------
+local flyBV, flyBG
+local function stopFly()
+    if flyBV then flyBV:Destroy() flyBV = nil end
+    if flyBG then flyBG:Destroy() flyBG = nil end
+    local h = hum()
+    if h then h.PlatformStand = false end
+end
+local function startFly()
+    local r, h = root(), hum()
+    if not r or not h then return end
+    stopFly()
+    flyBV = new("BodyVelocity", { MaxForce = Vector3.new(9e9, 9e9, 9e9), Velocity = Vector3.zero }, r)
+    flyBG = new("BodyGyro", { MaxTorque = Vector3.new(9e9, 9e9, 9e9), P = 9e4, CFrame = r.CFrame }, r)
+    h.PlatformStand = true
+end
+
+bind(RS.Heartbeat, function()
+    local r, h = root(), hum()
+    if not r or not h then return end
+    local cam = workspace.CurrentCamera
+    if S.fly and flyBV and flyBG then
+        local look = cam.CFrame.LookVector
+        local flatLook = Vector3.new(look.X, 0, look.Z)
+        flatLook = flatLook.Magnitude > 0 and flatLook.Unit or Vector3.new(0, 0, -1)
+        local right = cam.CFrame.RightVector
+        local flatRight = Vector3.new(right.X, 0, right.Z)
+        flatRight = flatRight.Magnitude > 0 and flatRight.Unit or Vector3.new(1, 0, 0)
+        local dir = h.MoveDirection
+        local vel = look * dir:Dot(flatLook) + right * dir:Dot(flatRight)
+        if UIS:IsKeyDown(Enum.KeyCode.Space) or UIS:IsKeyDown(Enum.KeyCode.E) then vel += Vector3.new(0, 1, 0) end
+        if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.Q) then vel -= Vector3.new(0, 1, 0) end
+        flyBV.Velocity = vel * S.flySpeed
+        flyBG.CFrame = CFrame.new(r.Position, r.Position + look)
+    end
+    if S.speedOn then h.WalkSpeed = S.speed end
+    if S.jumpOn then h.UseJumpPower = true; h.JumpPower = S.jump end
+    if S.spin then r.CFrame = r.CFrame * CFrame.Angles(0, math.rad(S.spinSpeed), 0) end
+end)
+
+bind(RS.Stepped, function()
+    if (S.noclip or S.farm) and lp.Character then
+        for _, p in ipairs(lp.Character:GetDescendants()) do
+            if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
+        end
+    end
+end)
+
+bind(UIS.JumpRequest, function()
+    if S.infJump then
+        local h = hum()
+        if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+bind(lp.CharacterAdded, function()
+    task.wait(1)
+    if S.fly then startFly() end
+end)
+
+bind(lp.Idled, function()
+    if S.antiafk then
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end
+end)
+
+-- interacao instantanea
+bind(PPS.PromptShown, function(prompt)
+    if S.instPrompt then prompt.HoldDuration = 0 end
+end)
+
+-- auto click
+task.spawn(function()
+    while gui.Parent do
+        if S.autoclick then
+            pcall(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton1(Vector2.new(900, 500))
+            end)
+            task.wait(1 / math.max(S.cps, 1))
+        else
+            task.wait(0.3)
+        end
+    end
+end)
+
+-- click TP
+local mouse = lp:GetMouse()
+bind(mouse.Button1Down, function()
+    if S.clickTp and isPremium and UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
+        local r = root()
+        if r and mouse.Hit then r.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 3, 0)) end
+    end
+end)
+
+-- fullbright
+local origLight
+local function setFullbright(on)
+    if on then
+        origLight = origLight or {
+            Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime, FogEnd = Lighting.FogEnd,
+            GlobalShadows = Lighting.GlobalShadows, Ambient = Lighting.Ambient,
+        }
+        Lighting.Brightness = 2; Lighting.ClockTime = 14; Lighting.FogEnd = 1e6
+        Lighting.GlobalShadows = false; Lighting.Ambient = Color3.fromRGB(190, 190, 190)
+    elseif origLight then
+        for k, v in pairs(origLight) do Lighting[k] = v end
+    end
+end
+
+-- ESP
+local espObjs = {}
+local function roleColor(p)
+    local c, b = p.Character, p:FindFirstChildOfClass("Backpack")
+    local function has(n) return (c and c:FindFirstChild(n)) or (b and b:FindFirstChild(n)) end
+    if has("Knife") then return Color3.fromRGB(255, 60, 60) end
+    if has("Gun") then return Color3.fromRGB(70, 140, 255) end
+    return theme.Accent
+end
+local function clearEsp()
+    for _, o in pairs(espObjs) do
+        if o.hl then o.hl:Destroy() end
+        if o.bb then o.bb:Destroy() end
+    end
+    table.clear(espObjs)
+end
+task.spawn(function()
+    while gui.Parent do
+        task.wait(0.5)
+        if S.esp then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local o = espObjs[p]
+                    if not o or not o.hl.Parent or o.hl.Adornee ~= p.Character then
+                        if o then o.hl:Destroy() o.bb:Destroy() end
+                        local hl = new("Highlight", { Adornee = p.Character, FillTransparency = 0.6, OutlineTransparency = 0 }, gui)
+                        local head = p.Character:FindFirstChild("Head") or p.Character.HumanoidRootPart
+                        local bb = new("BillboardGui", { Adornee = head, Size = UDim2.fromOffset(120, 20), StudsOffset = Vector3.new(0, 2.5, 0), AlwaysOnTop = true }, gui)
+                        new("TextLabel", {
+                            Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = p.DisplayName,
+                            TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0, Font = Enum.Font.GothamBold, TextSize = 13,
+                        }, bb)
+                        o = { hl = hl, bb = bb }
+                        espObjs[p] = o
+                    end
+                    local col = roleColor(p)
+                    o.hl.FillColor = col; o.hl.OutlineColor = col
+                end
+            end
+        elseif next(espObjs) then
+            clearEsp()
+        end
+    end
+end)
+
+------------------------------------------------------------------
+-- DETECCAO DE JOGO
+------------------------------------------------------------------
+local GAMES = {
+    [2753915549] = "Blox Fruits", [4442272183] = "Blox Fruits", [7449423635] = "Blox Fruits",
+    [142823291] = "Murder Mystery 2",
+    [6516141723] = "Doors", [6839171747] = "Doors",
+}
+local gameName = GAMES[game.PlaceId]
+
+------------------------------------------------------------------
+-- PAGINAS
+------------------------------------------------------------------
+-- MAIN
+local pMain = addTab("tab_main")
+Toggle(pMain, "fly", false, function(v)
+    S.fly = v
+    if v then startFly() else stopFly() end
+end)
+Slider(pMain, "flyspeed", 10, 250, S.flySpeed, function(v) S.flySpeed = v end)
+Toggle(pMain, "noclip", false, function(v) S.noclip = v end)
+Toggle(pMain, "infjump", false, function(v) S.infJump = v end)
+Toggle(pMain, "spin", false, function(v) S.spin = v end)
+Slider(pMain, "spinspeed", 1, 60, S.spinSpeed, function(v) S.spinSpeed = v end)
+Toggle(pMain, "antiafk", true, function(v) S.antiafk = v end)
+Toggle(pMain, "instprompt", false, function(v)
+    S.instPrompt = v
+    if v then
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then d.HoldDuration = 0 end
+        end
+    end
+end)
+
+-- PLAYER
+local pPlayer = addTab("tab_player")
+Toggle(pPlayer, "speedon", false, function(v)
+    S.speedOn = v
+    if not v then local h = hum() if h then h.WalkSpeed = 16 end end
+end)
+Slider(pPlayer, "speedval", 16, 300, S.speed, function(v) S.speed = v end)
+Toggle(pPlayer, "jumpon", false, function(v)
+    S.jumpOn = v
+    if not v then local h = hum() if h then h.JumpPower = 50 end end
+end)
+Slider(pPlayer, "jumpval", 50, 300, S.jump, function(v) S.jump = v end)
+Toggle(pPlayer, "autoclick", false, function(v) S.autoclick = v end)
+Slider(pPlayer, "cps", 1, 30, S.cps, function(v) S.cps = v end)
+
+-- TELEPORT
+local pTp = addTab("tab_tp")
+local listRow = row(pTp, 170)
+local listScroll = new("ScrollingFrame", {
+    Size = UDim2.new(1, -16, 1, -16), Position = UDim2.fromOffset(8, 8), BackgroundTransparency = 1,
+    BorderSizePixel = 0, ScrollBarThickness = 3, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, listRow)
+new("UIListLayout", { Padding = UDim.new(0, 4) }, listScroll)
+local function refreshPlayers()
+    for _, c in ipairs(listScroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp then
+            local b = new("TextButton", {
+                Size = UDim2.new(1, -6, 0, 28), BackgroundColor3 = theme.Off, BorderSizePixel = 0,
+                Text = p.DisplayName .. "  (@" .. p.Name .. ")", TextColor3 = theme.Text,
+                Font = Enum.Font.Gotham, TextSize = 12,
+            }, listScroll)
+            corner(b, 6)
+            b.MouseButton1Click:Connect(function()
+                local r, tr_ = root(), p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+                if r and tr_ then r.CFrame = tr_.CFrame * CFrame.new(0, 0, 3) end
+            end)
+        end
+    end
+end
+refreshPlayers()
+bind(Players.PlayerAdded, refreshPlayers)
+bind(Players.PlayerRemoving, function() task.defer(refreshPlayers) end)
+Button(pTp, "refresh", refreshPlayers)
+
+-- VISUAL
+local pVis = addTab("tab_visual")
+Toggle(pVis, "fullbright", false, function(v) S.fullbright = v; setFullbright(v) end)
+Button(pVis, "fps", function()
+    pcall(function() settings().Rendering.QualityLevel = 1 end)
+    Lighting.GlobalShadows = false
+    for _, d in ipairs(workspace:GetDescendants()) do
+        if d:IsA("BasePart") then d.Material = Enum.Material.SmoothPlastic; d.CastShadow = false
+        elseif d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Smoke") or d:IsA("Fire") then d.Enabled = false end
+    end
+end)
+Button(pVis, "rejoin", function() TeleportService:Teleport(game.PlaceId, lp) end)
+
+-- JOGO (opcoes extras por jogo)
+local pGame = addTab("tab_game")
+Info(pGame, function()
+    return gameName and (tr("game_detected") .. gameName) or tr("game_none")
+end)
+
+if gameName == "Blox Fruits" then
+    local weapons = { "Melee", "Sword", "Blox Fruit", "Gun" }
+    Toggle(pGame, "farm", false, function(v) S.farm = v end)
+    Choice(pGame, "weapon", weapons, 1, function(_, name) S.weapon = name end)
+    Slider(pGame, "farmh", 3, 25, S.farmH, function(v) S.farmH = v end)
+
+    task.spawn(function()
+        while gui.Parent do
+            task.wait(0.1)
+            if S.farm then
+                pcall(function()
+                    local r, h = root(), hum()
+                    if not r or not h or h.Health <= 0 then return end
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if not enemies then return end
+                    local best, bd
+                    for _, m in ipairs(enemies:GetChildren()) do
+                        local mh, mr = m:FindFirstChildOfClass("Humanoid"), m:FindFirstChild("HumanoidRootPart")
+                        if mh and mr and mh.Health > 0 then
+                            local d = (mr.Position - r.Position).Magnitude
+                            if not bd or d < bd then best, bd = m, d end
+                        end
+                    end
+                    if not best then return end
+                    local tool = lp.Character:FindFirstChildOfClass("Tool")
+                    if not tool or tool.ToolTip ~= S.weapon then
+                        for _, t in ipairs(lp.Backpack:GetChildren()) do
+                            if t:IsA("Tool") and t.ToolTip == S.weapon then h:EquipTool(t) break end
+                        end
+                    end
+                    r.CFrame = best.HumanoidRootPart.CFrame * CFrame.new(0, S.farmH, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+                    r.AssemblyLinearVelocity = Vector3.zero
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton1(Vector2.new(900, 500))
+                end)
+            end
+        end
+    end)
+elseif gameName == "Murder Mystery 2" then
+    Info(pGame, function() return tr("mm2info") end)
+elseif gameName == "Doors" then
+    Toggle(pGame, "doorshl", false, function(v) S.doorsHl = v end)
+    task.spawn(function()
+        while gui.Parent do
+            task.wait(1)
+            local rooms = workspace:FindFirstChild("CurrentRooms")
+            if rooms then
+                for _, d in ipairs(rooms:GetDescendants()) do
+                    if d:IsA("ProximityPrompt") and d.Parent then
+                        local existing = d.Parent:FindFirstChild("KamuHL")
+                        if S.doorsHl and not existing then
+                            new("Highlight", { Name = "KamuHL", FillColor = theme.Accent, FillTransparency = 0.6 }, d.Parent)
+                        elseif not S.doorsHl and existing then
+                            existing:Destroy()
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- PREMIUM
+local pPrem = addTab("tab_premium")
+if not isPremium then
+    Info(pPrem, function() return tr("locked") .. "\n" .. tr("yourid") .. lp.UserId end)
+else
+    Toggle(pPrem, "esp", false, function(v) S.esp = v; if not v then clearEsp() end end)
+    Toggle(pPrem, "clicktp", false, function(v) S.clickTp = v end)
+    Button(pPrem, "serverhop", function()
+        pcall(function()
+            local data = HttpService:JSONDecode(game:HttpGet(
+                "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+            for _, s in ipairs(data.data) do
+                if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, lp)
+                    break
+                end
+            end
+        end)
+    end)
+end
+
+-- CONFIG
+local pCfg = addTab("tab_config")
+local accRow = row(pCfg, 56)
+rowLabel(accRow, "accent", -20)
+local presets = {
+    Color3.fromRGB(150, 90, 255), Color3.fromRGB(255, 70, 110), Color3.fromRGB(60, 160, 255),
+    Color3.fromRGB(50, 210, 140), Color3.fromRGB(255, 170, 40), Color3.fromRGB(240, 240, 240),
+}
+for i, c in ipairs(presets) do
+    local b = new("TextButton", {
+        Size = UDim2.fromOffset(24, 24), Position = UDim2.fromOffset(12 + (i - 1) * 32, 28),
+        BackgroundColor3 = c, Text = "", BorderSizePixel = 0,
+    }, accRow)
+    corner(b, 12)
+    b.MouseButton1Click:Connect(function()
+        theme.Accent = c
+        for _, fn in ipairs(accentFns) do pcall(fn) end
+    end)
+end
+Choice(pCfg, "language", { "Portugues", "English" }, 1, function(i)
+    lang = (i == 1) and "pt" or "en"
+    for _, fn in ipairs(langFns) do pcall(fn) end
+end)
+
+local toggleKey = Enum.KeyCode.LeftShift
+local binding = false
+local keyBtn
+keyBtn = Button(pCfg, "togglekey", function()
+    binding = true
+    keyBtn.Text = tr("pressakey")
+end, function() return tr("togglekey") .. ": " .. toggleKey.Name end)
+
+Button(pCfg, "destroy", function() if getgenv then pcall(getgenv().KamuHubDestroy) end end)
+
+------------------------------------------------------------------
+-- PILULA (minimizado)
+------------------------------------------------------------------
+local pill = new("Frame", {
+    Size = UDim2.fromOffset(190, 40), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 12),
+    BackgroundColor3 = theme.Side, BorderSizePixel = 0, Visible = false,
+}, gui)
+corner(pill, 20)
+local pillStroke = new("UIStroke", { Thickness = 1.5 }, pill)
+onAccent(function() pillStroke.Color = theme.Accent end)
+local pillLogo = new("ImageLabel", {
+    Size = UDim2.fromOffset(32, 32), Position = UDim2.fromOffset(4, 4), BackgroundColor3 = theme.Accent,
+    BorderSizePixel = 0, ScaleType = Enum.ScaleType.Crop,
+}, pill)
+corner(pillLogo, 16)
+loadLogo(pillLogo)
+new("TextLabel", {
+    Size = UDim2.new(1, -48, 1, 0), Position = UDim2.fromOffset(44, 0), BackgroundTransparency = 1,
+    Text = "KamuHub", Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = theme.Text,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, pill)
+local pillBtn = new("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "" }, pill)
+
+local minimized = false
+local function toggleMenu()
+    minimized = not minimized
+    win.Visible = not minimized
+    pill.Visible = minimized
+    if minimized then
+        pill.Size = UDim2.fromOffset(40, 40)
+        TS:Create(pill, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Size = UDim2.fromOffset(190, 40) }):Play()
+    end
+end
+minBtn.MouseButton1Click:Connect(toggleMenu)
+pillBtn.MouseButton1Click:Connect(toggleMenu)
+
+bind(UIS.InputBegan, function(i, gp)
+    if binding and i.UserInputType == Enum.UserInputType.Keyboard then
+        toggleKey = i.KeyCode
+        binding = false
+        keyBtn.Text = tr("togglekey") .. ": " .. toggleKey.Name
+        return
+    end
+    if gp then return end
+    if i.KeyCode == toggleKey then toggleMenu() end
+end)
+
+------------------------------------------------------------------
+-- DESTRUIR
+------------------------------------------------------------------
+local function destroyAll()
+    for k in pairs(S) do if type(S[k]) == "boolean" then S[k] = false end end
+    stopFly(); clearEsp(); setFullbright(false)
+    local h = hum()
+    if h then h.WalkSpeed = 16; h.JumpPower = 50 end
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    gui:Destroy()
+    if getgenv then getgenv().KamuHubDestroy = nil end
+end
+closeBtn.MouseButton1Click:Connect(destroyAll)
+if getgenv then getgenv().KamuHubDestroy = destroyAll end
+
+selectTab(tabs[1])
+notify(tr("loaded"))
